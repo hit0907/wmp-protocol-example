@@ -31,7 +31,7 @@ function onDeviceReady() {
         console.log('Connect successful');
         document.getElementById('setTempBtn').style.display = '';
 
-        wmp.cmdId().then((data) => console.log('Device info', data));
+        wmp.getDeviceId().then((data) => console.log('Device info', data));
       })
       .catch((error) => {
         console.error('Connect fail', error);

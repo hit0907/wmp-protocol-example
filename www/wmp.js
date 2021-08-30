@@ -1,9 +1,29 @@
-// More details: https://cdn.hms-networks.com/docs/librariesprovider11/manuals-design-guides/wmp-protocol-specifications.pdf
 function WmpConnection(ip, pingIntervalTime) {
   this.ip = ip;
   this.pingIntervalTime = pingIntervalTime || 30000; // 30s
   this._callbacks = [];
 }
+
+// Get device information
+WmpConnection.CMD_ID = 'ID';
+WmpConnection.CMD_INFO = 'INFO';
+WmpConnection.CMD_SET = 'SET';
+WmpConnection.CMD_GET = 'GET';
+
+// Listen notification when value changes
+WmpConnection.CMD_CHN = 'CHN';
+
+WmpConnection.CMD_LOGIN = 'LOGIN';
+WmpConnection.CMD_LOGOUT = 'LOGOUT';
+
+// Success callback
+WmpConnection.CMD_ACK = 'ACK';
+
+// Error callback
+WmpConnection.CMD_ERR = 'ERR';
+
+// Notification callback
+WmpConnection.CMD_CHN = 'CHN';
 
 // Turns the AC unit On or Off
 WmpConnection.FUNC_ONOFF = 'ONOFF';
@@ -65,7 +85,9 @@ WmpConnection.prototype.ping = function () {
 };
 
 WmpConnection.prototype.close = function () {
+  // Stop ping alive
   clearInterval(this._pingTimer);
+
   if (this.socket) {
     this.socket.close();
     this.socket = null;
@@ -83,14 +105,17 @@ WmpConnection.prototype.uint8ArrayToString = function (data) {
 WmpConnection.prototype.onData = function (data) {
   console.log('Received data', data);
   const text = this.uint8ArrayToString(data);
+  const isValueChange = text.indexOf(WmpConnection.CMD_CHN) === 0;
   console.log('Received text', text);
-  const wmpdata = this.parseResponseLines(text);
 
-  for (let i = 0; i < wmpdata.length; i++) {
-    if (wmpdata[i].type !== 'CHN') {
-      this._execCallback(wmpdata[i]);
-    }
-  }
+  // if (isValueChange) {
+  // TODO: handle value changes
+
+  //   return;
+  // }
+
+  const lines = text.split('\r\n');
+  this._execCallback(lines);
 };
 
 WmpConnection.prototype.onError = function (error) {
@@ -109,46 +134,94 @@ WmpConnection.prototype.writeText = function (text) {
   this.socket.write(data);
 };
 
-WmpConnection.prototype.sendCmd = function (cmd) {
+WmpConnection.prototype.sendCmd = function (cmd, transformer) {
   return new Promise((resolve, reject) => {
     if (this.socket && this.socket.state !== Socket.State.OPENED) {
       reject('Socket is not opened');
       return;
     }
-    this._callbacks.push(resolve);
+
     this.writeText(cmd + '\n');
+
+    this._callbacks.push((lines) => {
+      if (lines[0] === 'ERR') {
+        reject(lines[0]);
+        return;
+      }
+      resolve((transformer && transformer(lines)) || lines);
+    });
   });
 };
 
-WmpConnection.prototype.cmdId = function () {
-  return this.sendCmd('ID');
+WmpConnection.prototype.parseLine = function (line) {
+  const segments = line.split(':');
+  return {
+    type: segments[0],
+    raw: segments[1],
+  };
 };
 
-WmpConnection.prototype.cmdInfo = function () {
-  return this.sendCmd('INFO');
+// > ID
+// < ID: INWMPUNI001I000,001DC9A2C911,192.168.100.246,ASCII,v0.0.1,-44
+WmpConnection.prototype.getDeviceId = function () {
+  return this.sendCmd(WmpConnection.CMD_ID, (lines) => {
+    const data = this.parseLine(lines[0]);
+    const parts = data.raw.split(',');
+    return Object.assign(data, {
+      model: parts[0],
+      mac: parts[1],
+      ip: parts[2],
+      protocol: parts[3],
+      version: parts[4],
+      rssi: parts[5],
+    });
+  });
 };
 
-WmpConnection.prototype.cmdGet = function (feature) {
-  return this.sendCmd('GET,1:' + feature);
+// > INFO
+// < INFO:RUNVERSION,1.0.1
+// < INFO:CFGVERSION,1.0.1
+// < INFO:HASH,2000:0106:001F:0104:F4DE
+WmpConnection.prototype.getInfo = function () {
+  return this.sendCmd(WmpConnection.CMD_INFO, (lines) => {
+    const data = {
+      type: WmpConnection.CMD_INFO,
+      raw: lines,
+    };
+    lines.forEach((line) => {
+      const values = line.split(':')[1].split(',');
+      data[values[0]] = values[1];
+    });
+    return data;
+  });
 };
 
-WmpConnection.prototype.cmdSet = function (feature, value) {
-  //convert decimal to 10x temp numbers
-  // if (feature.toUpperCase() === 'SETPTEMP') value = value * 10;
+// < SET,1:ONOFF,ON
+// < ACK
+// < CHN,1:ONOFF,ON
+WmpConnection.prototype.setValue = function (feature, value) {
+  return this.sendCmd(`SET,1:${feature},${value}`);
+};
 
-  return this.sendCmd(`SET,1:${feature},${value}`).then((data) => {
-    if (data.type !== 'ACK') {
-      console.error('Received non-ack message from set command', data);
-    }
+// > GET,1:MODE
+// < CHN,1:MODE,AUTO
+WmpConnection.prototype.getValue = function (feature) {
+  return this.sendCmd('GET,1:' + feature, (lines) => {
+    const parts = lines[0].split(':')[1].split(',');
+    return {
+      raw: lines,
+      feature: parts[0],
+      value: parts[1],
+    };
   });
 };
 
 WmpConnection.prototype.setTemperature = function (value) {
-  return this.cmdSet(WmpConnection.FUNC_SETPTEMP, value * 10);
+  return this.setValue(WmpConnection.FUNC_SETPTEMP, value * 10);
 };
 
-WmpConnection.prototype.getTemperature = function (value) {
-  return this.cmdGet(WmpConnection.FUNC_SETPTEMP, value);
+WmpConnection.prototype.getTemperature = function () {
+  return this.getValue(WmpConnection.FUNC_SETPTEMP);
 };
 
 WmpConnection.prototype.login = function (password) {
@@ -164,69 +237,6 @@ WmpConnection.prototype._execCallback = function (data) {
   if (callback) {
     callback(data);
   } else {
-    console.error('Received message without callback', data);
+    console.warn('Received message without callback', data);
   }
-};
-
-WmpConnection.prototype.parseResponseLines = function (wmpString) {
-  const lines = wmpString.split('\r\n');
-  const rv = [];
-  lines.forEach((line) => {
-    if (line) {
-      const data = this.parseResponseLine(line);
-      if (data) {
-        rv.push(data);
-      }
-    }
-  });
-  return rv;
-};
-
-WmpConnection.prototype.parseResponseLine = function (wmpLine) {
-  const segments = wmpLine.split(':');
-  const type = segments[0].split(',')[0];
-  const rv = {
-    type: type,
-  };
-  let parts;
-  switch (type) {
-    case 'ACK':
-      break;
-    case 'ERR':
-      break;
-    case 'ID':
-      if (!segments[1]) {
-        console.error('Data invalid', segments);
-        return;
-      }
-      parts = segments[1].split(',');
-      Object.assign(rv, {
-        model: parts[0],
-        mac: parts[1],
-        ip: parts[2],
-        protocol: parts[3],
-        version: parts[4],
-        rssi: parts[5],
-      });
-      break;
-    default:
-      if (!segments[1]) {
-        console.error('Data invalid', segments);
-        return;
-      }
-      parts = segments[1].split(',');
-      Object.assign(rv, {
-        feature: parts[0],
-        value: parts[1],
-      });
-      break;
-  }
-
-  if (rv.type === 'CHN') {
-    if (rv.feature === 'AMBTEMP' || rv.feature === 'SETPTEMP') {
-      rv.value = rv.value / 10;
-    }
-  }
-
-  return rv;
 };
