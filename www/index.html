@@ -24,10 +24,20 @@
         </div>
         <div class="form-group">
             <button id="connectBtn" onclick="connect()" class="btn btn-primary m-1">Connect</button>
-            <button id="setTempBtn" onclick="setTemperature()" class="btn btn-primary m-1" style="display: none;">Set
-                Temperature</button>
-            <button id="disconectBtn" onclick="disconnect()" class="btn btn-danger m-1"
-                style="display: none;">Disconnect</button>
+        </div>
+        <div id="funcContainer" class="form-group" style="display: none;">
+            <button id="setTempBtn" onclick="setTemperature()" class="btn btn-primary m-1">
+                Set Temperature
+            </button>
+            <button onclick="turnOn()" class="btn btn-success m-1">
+                ON
+            </button>
+            <button onclick="turnOff()" class="btn btn-danger m-1">
+                OFF
+            </button>
+            <button id="disconectBtn" onclick="disconnect()" class="btn btn-danger m-1">
+                Disconnect
+            </button>
         </div>
     </div>
     <script src="cordova.js"></script>

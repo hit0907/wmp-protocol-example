@@ -19,6 +19,14 @@ function onDeviceReady() {
     }
   };
 
+  window.turnOn = function () {
+    wmp.turnOn();
+  };
+
+  window.turnOff = function () {
+    wmp.turnOff();
+  };
+
   // App logic
   var wmp;
 
@@ -29,7 +37,7 @@ function onDeviceReady() {
       .connect()
       .then(() => {
         console.log('Connect successful');
-        document.getElementById('setTempBtn').style.display = '';
+        document.getElementById('funcContainer').style.display = '';
 
         wmp.getDeviceId().then((data) => console.log('Device info', data));
       })

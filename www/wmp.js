@@ -105,15 +105,7 @@ WmpConnection.prototype.uint8ArrayToString = function (data) {
 WmpConnection.prototype.onData = function (data) {
   console.log('Received data', data);
   const text = this.uint8ArrayToString(data);
-  const isValueChange = text.indexOf(WmpConnection.CMD_CHN) === 0;
   console.log('Received text', text);
-
-  // if (isValueChange) {
-  // TODO: handle value changes
-
-  //   return;
-  // }
-
   const lines = text.split('\r\n');
   this._execCallback(lines);
 };
@@ -222,6 +214,14 @@ WmpConnection.prototype.setTemperature = function (value) {
 
 WmpConnection.prototype.getTemperature = function () {
   return this.getValue(WmpConnection.FUNC_SETPTEMP);
+};
+
+WmpConnection.prototype.turnOff = function () {
+  return this.setValue(WmpConnection.FUNC_ONOFF, 'OFF');
+};
+
+WmpConnection.prototype.turnOn = function () {
+  return this.setValue(WmpConnection.FUNC_ONOFF, 'ON');
 };
 
 WmpConnection.prototype.login = function (password) {
