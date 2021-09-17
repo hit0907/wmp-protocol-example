@@ -127,6 +127,7 @@ WmpConnection.prototype.writeText = function (text) {
 };
 
 WmpConnection.prototype.sendCmd = function (cmd, transformer) {
+  console.log('Sending cmd', cmd);
   return new Promise((resolve, reject) => {
     if (this.socket && this.socket.state !== Socket.State.OPENED) {
       reject('Socket is not opened');
