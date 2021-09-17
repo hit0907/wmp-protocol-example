@@ -79,8 +79,8 @@ WmpConnection.prototype.connect = function () {
 };
 
 WmpConnection.prototype.ping = function () {
-  return this.cmdId().then(() => {
-    console.log('Ping successful');
+  return this.getDeviceId().then((data) => {
+    console.log('Ping successful', data);
   });
 };
 
